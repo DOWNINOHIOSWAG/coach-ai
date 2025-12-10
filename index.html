@@ -9,10 +9,10 @@
         body {
             display: flex;
             flex-direction: column; 
-            justify-content: flex-start; /* Align content to the top */
+            justify-content: flex-start;
             align-items: center;
             min-height: 100vh;
-            padding-top: 20px; /* Add some space at the top */
+            padding: 20px 0; /* Add space above and below content */
             margin: 0;
             background-color: #f0f0f0;
             user-select: none;
@@ -21,6 +21,7 @@
 
         /* --- CONTROL PANEL --- */
         #control-panel {
+            width: 800px; /* Constrain width for better alignment */
             margin-bottom: 20px;
             padding: 15px;
             background-color: #fff;
@@ -30,6 +31,7 @@
             align-items: center;
             gap: 20px;
             flex-wrap: wrap;
+            justify-content: center;
         }
 
         #control-panel label {
@@ -52,11 +54,11 @@
             font-weight: bold;
         }
 
-        /* --- MAIN GAME CONTAINER: FIX IS HERE! --- */
+        /* --- MAIN GAME CONTAINER: This ensures side-by-side layout --- */
         #game-container {
             display: flex; /* Makes children (board and sidebar) flow horizontally */
             gap: 30px;
-            align-items: flex-start; 
+            align-items: flex-start; /* Aligns board and sidebar at the top */
             padding: 20px;
             background-color: #fff;
             border-radius: 8px;
@@ -76,8 +78,7 @@
             border: 5px solid #333;
             box-shadow: 0 6px 15px rgba(0,0,0,0.2);
             background-color: #333;
-            position: relative; 
-            /* Total size is 8*60 + 5*2 border = 490px */
+            position: relative; /* Ensure z-index is respected if needed, but simple positioning is best */
         }
 
         .square {
@@ -99,6 +100,12 @@
             background-position: center;
             cursor: pointer;
             z-index: 2;
+        }
+        
+        /* Piece moving animation style */
+        .moving-piece {
+            transition: transform 0.3s ease-out;
+            z-index: 1000;
         }
         
         .dragging {
@@ -129,7 +136,6 @@
         }
 
         #move-list-container {
-            /* Max height applied to keep the list from growing too large */
             max-height: 400px; 
             overflow-y: auto;
             border: 1px solid #ccc;
@@ -144,14 +150,14 @@
             margin: 0;
             display: flex;
             flex-wrap: wrap;
-            gap: 5px 10px; /* Adjust gap for better readability */
+            gap: 5px 10px; 
         }
 
         #move-list li {
             font-size: 0.9em;
             padding: 2px 5px;
             border-radius: 3px;
-            flex-basis: 45%; /* Allow two columns of moves */
+            flex-basis: 45%; 
             display: flex;
         }
         
@@ -161,7 +167,7 @@
             margin-right: 5px;
         }
         
-        /* ... (Include all other styles like piece mappings, highlights, etc.) ... */
+        /* --- PIECE IMAGES AND HIGHLIGHTS --- */
         .wk { background-image: url('images/wk.png'); }
         .wq { background-image: url('images/wq.png'); }
         .wr { background-image: url('images/wr.png'); }
@@ -174,7 +180,8 @@
         .bb { background-image: url('images/bb.png'); }
         .bn { background-image: url('images/bn.png'); }
         .bp { background-image: url('images/bp.png'); }
-        /* PROMOTION */
+        
+        /* PROMOTION PIECES (Ensure these images exist!) */
         .promo-Q { background-image: url('images/wq.png'); }
         .promo-R { background-image: url('images/wr.png'); }
         .promo-B { background-image: url('images/wb.png'); }
@@ -197,12 +204,14 @@
              box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.2); 
              border-radius: 50%;
         }
+
+        /* --- DIALOGS --- */
         .piece-choice {
             width: 45px;
             height: 45px;
         }
         .overlay-dialog {
-            position: absolute;
+            position: fixed; /* Changed from absolute to fixed for better centering */
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
@@ -267,7 +276,7 @@
             
             <div class="info-box">
                 <h4>Opening:</h4>
-                <div id="opening-display">Loading...</div>
+                <div id="opening-display">Initial Position</div>
             </div>
 
             <div class="info-box">
@@ -336,6 +345,7 @@
 
         function initStockfish() {
             try {
+                // IMPORTANT: Change "stockfish.js" to the actual path/name if different.
                 stockfish = new Worker("stockfish.js"); 
                 
                 stockfish.onmessage = handleStockfishMessage;
@@ -400,7 +410,7 @@
             }
         }
         
-        // --- CHESS LOGIC ---
+        // --- CHESS LOGIC UTILITIES ---
         
         const PIECE_MAP = {
             'K': { class: 'wk', type: 'King', color: 'w' }, 'Q': { class: 'wq', type: 'Queen', color: 'w' },
@@ -468,7 +478,7 @@
                 gameOverDialog.style.display = 'none';
                 this.updateMoveListDisplay();
                 this.updateOpeningDisplay();
-                this.render(); // Ensure initial board is rendered
+                this.render(); 
 
                 if (this.turn === AI_PLAYER) this.requestAIMove();
             }
@@ -626,8 +636,6 @@
                 }
             }
 
-            // ... (All other methods like requestAIMove, processAIMove, tryMove, executeMove, etc. remain the same as the last working version) ...
-            
             requestAIMove() {
                 if (this.isGameOver || this.turn !== AI_PLAYER || !sfReady || this.isAnimating) return;
                 
@@ -711,8 +719,16 @@
                 pieceEl.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
 
                 return new Promise(resolve => {
-                    pieceEl.addEventListener('transitionend', () => resolve(), { once: true });
-                    setTimeout(resolve, 300);
+                    pieceEl.addEventListener('transitionend', () => {
+                         pieceEl.classList.remove('moving-piece');
+                         pieceEl.style.transform = '';
+                         resolve();
+                    }, { once: true });
+                    setTimeout(() => {
+                         pieceEl.classList.remove('moving-piece');
+                         pieceEl.style.transform = '';
+                         resolve();
+                    }, 300); // Failsafe timeout
                 });
             }
 
@@ -823,14 +839,13 @@
             showPromo() {
                 promoChoices.innerHTML = '';
                 const c = this.turn;
-                // Pieces for promotion dialog will be black if player is black, white if player is white
                 const promoSuffix = c === 'w' ? '' : 'b'; 
                 
                 ['Q','R','B','N'].forEach(type => {
                     const div = document.createElement('div');
-                    // We must update the class to show the correct color piece in the dialog
-                    div.className = `piece-choice promo-${type}${c === 'w' ? '' : promoSuffix}`;
-                    div.style.backgroundImage = `url('images/${promoSuffix}${type.toLowerCase()}.png')`; // Ensure correct image is used
+                    div.className = `piece-choice promo-${type}`;
+                    // Note: If you only have white promo piece images, the line below is needed for black:
+                    div.style.backgroundImage = `url('images/${promoSuffix}${type.toLowerCase()}.png')`; 
 
                     div.onclick = () => {
                         const { from, to, uci } = this.pendingPromo;
@@ -886,8 +901,8 @@
                 }
 
                 if (this.dragGhost) {
-                    this.dragGhost.style.left = (e.clientX - 30) + 'px'; // Adjusted half-size 
-                    this.dragGhost.style.top = (e.clientY - 30) + 'px'; // Adjusted half-size
+                    this.dragGhost.style.left = (e.clientX - 30) + 'px'; 
+                    this.dragGhost.style.top = (e.clientY - 30) + 'px'; 
                 }
             }
 
@@ -923,8 +938,8 @@
                 this.dragGhost = srcEl.cloneNode(true);
                 this.dragGhost.classList.add('dragging');
                 document.body.appendChild(this.dragGhost);
-                this.dragGhost.style.left = (e.clientX - 30) + 'px'; // Adjusted half-size
-                this.dragGhost.style.top = (e.clientY - 30) + 'px'; // Adjusted half-size
+                this.dragGhost.style.left = (e.clientX - 30) + 'px'; 
+                this.dragGhost.style.top = (e.clientY - 30) + 'px'; 
             }
 
             removeGhost() {
@@ -934,7 +949,7 @@
                 }
             }
             
-            // ... (All validation methods remain the same) ...
+            // --- VALIDATION METHODS (Kept the same for functionality) ---
 
             isMoveLegal(from, to) {
                 const f = toCoords(from);
