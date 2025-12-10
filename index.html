@@ -3,20 +3,20 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chess AI Coach - Adjustable ELO</title>
+    <title>Chess AI Coach - Analytical Layout</title>
     <style>
-        /* --- LAYOUT --- */
+        /* --- GENERAL LAYOUT --- */
         body {
             display: flex;
-            flex-direction: column; /* Changed to column to stack controls above board */
-            justify-content: center;
+            flex-direction: column; 
+            justify-content: flex-start; /* Align content to the top */
             align-items: center;
             min-height: 100vh;
+            padding-top: 20px; /* Add some space at the top */
             margin: 0;
             background-color: #f0f0f0;
             user-select: none;
             font-family: sans-serif;
-            overflow: hidden; 
         }
 
         /* --- CONTROL PANEL --- */
@@ -28,7 +28,8 @@
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
             display: flex;
             align-items: center;
-            gap: 15px;
+            gap: 20px;
+            flex-wrap: wrap;
         }
 
         #control-panel label {
@@ -36,28 +37,50 @@
             color: #333;
         }
 
-        #control-panel select {
+        #control-panel select, #control-panel button {
             padding: 8px 12px;
             border-radius: 5px;
             border: 1px solid #ccc;
             font-size: 1em;
             cursor: pointer;
         }
+        
+        #reset-button {
+            background-color: #f44336;
+            color: white;
+            border: none;
+            font-weight: bold;
+        }
 
-        /* --- BOARD STYLES (Kept from previous versions) --- */
+        /* --- MAIN GAME CONTAINER: FIX IS HERE! --- */
+        #game-container {
+            display: flex; /* Makes children (board and sidebar) flow horizontally */
+            gap: 30px;
+            align-items: flex-start; 
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+
+        /* --- CHESS BOARD (Resized) --- */
+        .square-size {
+            width: 60px; 
+            height: 60px; 
+        }
+        
         #chessboard {
             display: grid;
-            grid-template-columns: repeat(8, 80px); 
-            grid-template-rows: repeat(8, 80px);
+            grid-template-columns: repeat(8, 60px); 
+            grid-template-rows: repeat(8, 60px);
             border: 5px solid #333;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 6px 15px rgba(0,0,0,0.2);
             background-color: #333;
             position: relative; 
+            /* Total size is 8*60 + 5*2 border = 490px */
         }
 
         .square {
-            width: 80px; 
-            height: 80px;
             box-sizing: border-box; 
             display: flex;
             justify-content: center;
@@ -68,7 +91,6 @@
         .light { background-color: #eed6b0; }
         .dark { background-color: #b58863; }
         
-        /* --- PIECES --- */
         .piece {
             width: 100%;
             height: 100%;
@@ -77,18 +99,69 @@
             background-position: center;
             cursor: pointer;
             z-index: 2;
-            transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-            will-change: transform;
+        }
+        
+        .dragging {
+            width: 60px; 
+            height: 60px; 
+            transform: scale(1.15); 
         }
 
-        /* --- ANIMATION STATE --- */
-        .moving-piece {
-            z-index: 100 !important;
-            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4)); 
-            pointer-events: none;
+        /* --- SIDEBAR AND HISTORY --- */
+        #sidebar {
+            width: 280px; /* Fixed width for the sidebar */
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
         }
 
-        /* Image Mappings (Assumes 'images' folder) */
+        .info-box {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        #opening-display {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        #move-list-container {
+            /* Max height applied to keep the list from growing too large */
+            max-height: 400px; 
+            overflow-y: auto;
+            border: 1px solid #ccc;
+            padding: 10px;
+            background-color: #fff;
+            border-radius: 5px;
+        }
+        
+        #move-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px 10px; /* Adjust gap for better readability */
+        }
+
+        #move-list li {
+            font-size: 0.9em;
+            padding: 2px 5px;
+            border-radius: 3px;
+            flex-basis: 45%; /* Allow two columns of moves */
+            display: flex;
+        }
+        
+        .move-number {
+            font-weight: bold;
+            color: #666;
+            margin-right: 5px;
+        }
+        
+        /* ... (Include all other styles like piece mappings, highlights, etc.) ... */
         .wk { background-image: url('images/wk.png'); }
         .wq { background-image: url('images/wq.png'); }
         .wr { background-image: url('images/wr.png'); }
@@ -101,39 +174,33 @@
         .bb { background-image: url('images/bb.png'); }
         .bn { background-image: url('images/bn.png'); }
         .bp { background-image: url('images/bp.png'); }
+        /* PROMOTION */
+        .promo-Q { background-image: url('images/wq.png'); }
+        .promo-R { background-image: url('images/wr.png'); }
+        .promo-B { background-image: url('images/wb.png'); }
+        .promo-N { background-image: url('images/wn.png'); }
 
-        /* --- DRAG GHOST --- */
-        .dragging {
-            position: absolute;
-            width: 80px;
-            height: 80px; 
-            z-index: 9999; 
-            cursor: grabbing;
-            opacity: 0.9;
-            transform: scale(1.15); 
-            pointer-events: none;
-        }
-
-        /* --- HIGHLIGHTS --- */
         .selected { background-color: rgba(255, 255, 0, 0.5) !important; }
         .in-check { background-color: rgba(255, 0, 0, 0.6) !important; }
 
         .move-target::after {
             content: '';
             display: block;
-            width: 24px;
-            height: 24px;
+            width: 18px; 
+            height: 18px; 
             background-color: rgba(0, 0, 0, 0.2);
             border-radius: 50%;
         }
 
         .square.move-target:not(:empty)::after { display: none; }
         .square.move-target .piece {
-             box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
+             box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.2); 
              border-radius: 50%;
         }
-
-        /* --- PROMOTION & GAME OVER DIALOGS --- */
+        .piece-choice {
+            width: 45px;
+            height: 45px;
+        }
         .overlay-dialog {
             position: absolute;
             top: 50%;
@@ -147,58 +214,39 @@
             display: none;
             text-align: center;
         }
-
-        #game-over-dialog h3 {
-            margin-top: 0;
-            font-size: 1.5em;
-        }
-
-        #game-over-dialog button {
-            padding: 10px 20px;
-            font-size: 1.1em;
-            cursor: pointer;
-            background-color: #4CAF50;
-            color: white;
-            border: none;
-            border-radius: 5px;
-            margin-top: 15px;
-        }
-
-        /* Promotion UI */
-        .piece-choice {
-            display: inline-block;
-            width: 60px;
-            height: 60px;
-            margin: 5px;
-            cursor: pointer;
-            background-color: #ccc;
-            border-radius: 5px;
-            background-size: 80%;
-            background-repeat: no-repeat;
-            background-position: center;
-        }
-        .promo-Q { background-image: url('images/wq.png'); }
-        .promo-R { background-image: url('images/wr.png'); }
-        .promo-B { background-image: url('images/wb.png'); }
-        .promo-N { background-image: url('images/wn.png'); }
     </style>
 </head>
 <body>
 
     <div id="control-panel">
-        <label for="elo-selector">AI ELO Rating:</label>
-        <select id="elo-selector" onchange="game.setDifficulty(this.value)">
-            <option value="250">250 (Beginner)</option>
-            <option value="500">500 (Novice)</option>
-            <option value="800">800 (Casual)</option>
-            <option value="1100">1100 (Intermediate)</option>
-            <option value="1400">1400 (Club Player)</option>
-            <option value="1700">1700 (Expert)</option>
-            <option value="2000">2000 (Master)</option>
-            <option value="2400">2400 (GM Candidate)</option>
-            <option value="2500">2500 (Grandmaster)</option>
-            <option value="2700" selected>2700 (Super GM - Default)</option>
-        </select>
+        <div>
+            <label for="color-selector">Play As:</label>
+            <select id="color-selector" onchange="game.setPlayerColor(this.value)">
+                <option value="w" selected>White</option>
+                <option value="b">Black</option>
+                <option value="r">Random</option>
+            </select>
+        </div>
+        
+        <div>
+            <label for="elo-selector">AI ELO Rating:</label>
+            <select id="elo-selector" onchange="game.setDifficulty(this.value)">
+                <option value="250">250 (Beginner)</option>
+                <option value="500">500 (Novice)</option>
+                <option value="800">800 (Casual)</option>
+                <option value="1100">1100 (Intermediate)</option>
+                <option value="1400">1400 (Club Player)</option>
+                <option value="1700">1700 (Expert)</option>
+                <option value="2000">2000 (Master)</option>
+                <option value="2200">2200 (Candidate Master)</option>
+                <option value="2300">2300 (FIDE Master)</option>
+                <option value="2400">2400 (International Master)</option>
+                <option value="2500">2500 (Grandmaster)</option>
+                <option value="2700" selected>2700 (Super GM - Default)</option>
+            </select>
+        </div>
+        
+        <button id="reset-button" onclick="game.restartGame()">🔥 Reset Game</button>
     </div>
     
     <div id="promotion-dialog" class="overlay-dialog">
@@ -211,17 +259,47 @@
         <button onclick="game.restartGame()">Restart Game</button>
     </div>
 
-    <div id="chessboard"></div>
+    <div id="game-container">
+        
+        <div id="chessboard" class="square-size"></div>
+
+        <div id="sidebar">
+            
+            <div class="info-box">
+                <h4>Opening:</h4>
+                <div id="opening-display">Loading...</div>
+            </div>
+
+            <div class="info-box">
+                <h4>Move History:</h4>
+                <div id="move-list-container">
+                    <ol id="move-list"></ol>
+                </div>
+            </div>
+
+        </div>
+    </div>
 
     <script>
         // --- CONFIGURATION ---
         const ROWS = 8;
         const COLS = 8;
         const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-        const AI_PLAYER = 'b'; // Black side is the AI
+        let AI_PLAYER = 'b'; 
+
+        // --- Simplified Opening Database ---
+        const OPENING_DB = {
+            'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1': 'Open Game (1. e4)',
+            'rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq - 0 1': 'Closed Game (1. d4)',
+            'rnbqkbnr/pppppppp/8/8/2P5/8/PP1PPPPP/RNBQKBNR b KQkq - 0 1': 'English Opening (1. c4)',
+            'r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 3': 'Ruy Lopez (Spanish Game)',
+            'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 0 3': 'Italian Game',
+            'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2': 'Sicilian Defense',
+            'rnbqkbnr/ppp2ppp/4p3/3p4/2PP4/8/PP2PPPP/RNBQKBNR w KQkq - 0 3': "Queen's Gambit Declined",
+        };
+
 
         // --- STOCKFISH ELO MAPPING ---
-        // Maps desired ELO to Stockfish Skill Level, Search Depth, and Mistake Chance
         const ELO_MAP = {
             '250':  { skill: 0, depth: 1, mistake: 0.95 },
             '500':  { skill: 3, depth: 2, mistake: 0.8 },
@@ -230,9 +308,11 @@
             '1400': { skill: 12, depth: 8, mistake: 0.2 },
             '1700': { skill: 15, depth: 10, mistake: 0.05 },
             '2000': { skill: 18, depth: 12, mistake: 0.0 },
-            '2400': { skill: 20, depth: 15, mistake: 0.0 },
+            '2200': { skill: 18, depth: 13, mistake: 0.0 }, 
+            '2300': { skill: 19, depth: 14, mistake: 0.0 }, 
+            '2400': { skill: 20, depth: 15, mistake: 0.0 }, 
             '2500': { skill: 18, depth: 15, mistake: 0.0 }, 
-            '2700': { skill: 20, depth: 18, mistake: 0.0 } // Max strength
+            '2700': { skill: 20, depth: 18, mistake: 0.0 } 
         };
 
         // --- DOM ELEMENTS ---
@@ -242,22 +322,26 @@
         const gameOverDialog = document.getElementById('game-over-dialog');
         const gameOverMessage = document.getElementById('game-over-message');
         const eloSelector = document.getElementById('elo-selector');
+        const colorSelector = document.getElementById('color-selector');
+        const moveListEl = document.getElementById('move-list');
+        const openingDisplayEl = document.getElementById('opening-display');
+
 
         // --- STOCKFISH WORKER ---
         let stockfish = null;
         let sfReady = false;
         const BEST_MOVES = []; 
-        let currentAISettings = ELO_MAP['2700']; // Start with default GM settings
+        let currentAISettings = ELO_MAP['2700']; 
+        let userSelectedColor = 'w'; 
 
         function initStockfish() {
             try {
-                // Ensure stockfish.js is in the same folder and served via http://
                 stockfish = new Worker("stockfish.js"); 
                 
                 stockfish.onmessage = handleStockfishMessage;
                 stockfish.onerror = (e) => {
                     console.error("Stockfish worker error:", e);
-                    alert("Stockfish AI failed to load. Please ensure 'stockfish.js' is in the same folder and you are running a local web server (e.g., http://localhost:8000).");
+                    alert("Stockfish AI failed to load. Ensure 'stockfish.js' is accessible via your web server (e.g., GitHub Pages).");
                 };
 
                 stockfish.postMessage("uci");
@@ -266,13 +350,12 @@
                 console.log("Stockfish worker initiated.");
             } catch (e) {
                 console.error("Failed to load stockfish.js:", e);
-                alert("Stockfish AI failed to load. Please ensure 'stockfish.js' is in the same folder and you are running a local web server (e.g., http://localhost:8000).");
+                alert("Stockfish AI failed to load. Ensure 'stockfish.js' is accessible via your web server (e.g., GitHub Pages).");
             }
         }
 
         function configureStockfish() {
             if (!stockfish || !sfReady) return;
-            // Set the skill level based on the current ELO setting
             stockfish.postMessage(`setoption name Skill Level value ${currentAISettings.skill}`);
             console.log(`Stockfish configured: Skill Level ${currentAISettings.skill}, Depth ${currentAISettings.depth}`);
         }
@@ -282,11 +365,10 @@
 
             if (line === "readyok") {
                 sfReady = true;
-                configureStockfish(); // Configure Stockfish now that it's ready
+                configureStockfish();
                 if (game.turn === AI_PLAYER) game.requestAIMove();
             }
 
-            // Capture Best and Alternate Moves
             if (line.startsWith("info depth") || line.startsWith("bestmove")) {
                 const parts = line.split(' ');
                 
@@ -294,7 +376,6 @@
                     const depthIndex = parts.indexOf("depth");
                     const depth = depthIndex !== -1 ? parseInt(parts[depthIndex + 1]) : -1;
                     
-                    // Only store candidate moves for lower depths if AI is set to low skill
                     if (depth > 10 || currentAISettings.skill < 15) {
                         const scoreIndex = parts.indexOf("score");
                         const moveIndex = parts.indexOf("pv");
@@ -309,7 +390,6 @@
                                     score: scoreValue,
                                     type: parts[scoreIndex + 1]
                                 });
-                                // Keep the top 3 moves for the mistake logic to choose from
                                 BEST_MOVES.sort((a, b) => b.score - a.score).splice(3);
                             }
                         }
@@ -340,23 +420,33 @@
         function toNotation(row, col) {
             return String.fromCharCode(97 + col) + (8 - row);
         }
-
+        
         class ChessGame {
             constructor() {
                 document.addEventListener('mousemove', e => this.onMouseMove(e));
                 document.addEventListener('mouseup', e => this.onMouseUp(e));
                 
-                // Initialize settings from the selector's default value (2700)
                 this.setDifficulty(eloSelector.value);
-                this.initBoard();
-                this.render();
+                this.moveHistory = []; 
+                this.setPlayerColor(colorSelector.value); 
             }
             
             setDifficulty(elo) {
                 currentAISettings = ELO_MAP[elo];
-                // Reconfigure Stockfish immediately if it's ready
                 configureStockfish(); 
-                console.log(`AI difficulty set to ELO ${elo}`);
+            }
+
+            setPlayerColor(colorCode) {
+                userSelectedColor = colorCode;
+                
+                if (colorCode === 'r') {
+                    const randomColor = Math.random() < 0.5 ? 'w' : 'b';
+                    AI_PLAYER = randomColor === 'w' ? 'b' : 'w';
+                } else {
+                    AI_PLAYER = colorCode === 'w' ? 'b' : 'w';
+                }
+                
+                this.initBoard(); 
             }
 
             initBoard() {
@@ -372,15 +462,20 @@
                 this.isDragging = false;
                 this.isAnimating = false;
                 this.isGameOver = false;
+                this.moveHistory = []; 
 
                 this.loadFEN(START_FEN);
                 gameOverDialog.style.display = 'none';
+                this.updateMoveListDisplay();
+                this.updateOpeningDisplay();
+                this.render(); // Ensure initial board is rendered
+
+                if (this.turn === AI_PLAYER) this.requestAIMove();
             }
 
             restartGame() {
                 this.initBoard();
                 this.render();
-                if (this.turn === AI_PLAYER) this.requestAIMove();
             }
 
             getFEN() {
@@ -403,19 +498,17 @@
                     if (r < 7) fen += "/";
                 }
                 
-                fen += ` ${this.turn}`;
-                
+                let fullFen = `${fen} ${this.turn}`;
                 let castlingStr = "";
                 if (this.castling.wK) castlingStr += "K";
                 if (this.castling.wQ) castlingStr += "Q";
                 if (this.castling.bK) castlingStr += "k";
                 if (this.castling.bQ) castlingStr += "q";
-                fen += ` ${castlingStr || '-'}`;
-                
-                fen += ` ${this.enPassant || '-'}`;
-                fen += ` 0 1`;
-                
-                return fen;
+                fullFen += ` ${castlingStr || '-'}`;
+                fullFen += ` ${this.enPassant || '-'}`;
+                fullFen += ` 0 1`; 
+
+                return fullFen;
             }
 
             loadFEN(fen) {
@@ -430,18 +523,80 @@
                 this.updateCheckState();
             }
 
+            // --- History and Analysis Updates ---
+            recordMove(uciMove) {
+                this.moveHistory.push(uciMove);
+                this.updateMoveListDisplay();
+                this.updateOpeningDisplay();
+            }
+
+            updateMoveListDisplay() {
+                moveListEl.innerHTML = '';
+                let whiteMove = '';
+                let moveNumber = 1;
+
+                for (let i = 0; i < this.moveHistory.length; i++) {
+                    const uci = this.moveHistory[i];
+                    
+                    if (i % 2 === 0) { 
+                        if (whiteMove) { 
+                            let li = document.createElement('li');
+                            li.innerHTML = `<span class="move-number">${moveNumber}.</span> ${whiteMove}`;
+                            moveListEl.appendChild(li);
+                            moveNumber++;
+                        }
+                        whiteMove = uci;
+                    } else { 
+                        let li = document.createElement('li');
+                        li.innerHTML = `<span class="move-number">${moveNumber}.</span> ${whiteMove} ${uci}`;
+                        moveListEl.appendChild(li);
+                        whiteMove = '';
+                        moveNumber++;
+                    }
+                }
+                
+                if (whiteMove) {
+                    let li = document.createElement('li');
+                    li.innerHTML = `<span class="move-number">${moveNumber}.</span> ${whiteMove}`;
+                    moveListEl.appendChild(li);
+                }
+                
+                moveListEl.parentElement.scrollTop = moveListEl.parentElement.scrollHeight;
+            }
+
+            updateOpeningDisplay() {
+                const fullFen = this.getFEN();
+                const checkFen = fullFen.split(' ').slice(0, 4).join(' ');
+                
+                let openingName = 'Game in Progress...';
+                
+                for (const fenKey in OPENING_DB) {
+                    if (checkFen.startsWith(fenKey.split(' ').slice(0, 4).join(' '))) {
+                        openingName = OPENING_DB[fenKey];
+                        break;
+                    }
+                }
+                
+                if (fullFen.startsWith(START_FEN.split(' ').slice(0,4).join(' '))) {
+                    openingName = 'Initial Position';
+                }
+
+                openingDisplayEl.textContent = openingName;
+            }
+
             render() {
                 if (this.isAnimating) return; 
 
                 boardEl.innerHTML = '';
                 const enableInput = this.turn !== AI_PLAYER && !this.isGameOver;
+                const squareSizeClass = 'square-size'; 
 
                 for (let r = 0; r < 8; r++) {
                     for (let c = 0; c < 8; c++) {
                         const sq = document.createElement('div');
                         const notation = toNotation(r, c);
                         sq.id = notation;
-                        sq.className = `square ${(r + c) % 2 ? 'dark' : 'light'}`;
+                        sq.className = `square ${squareSizeClass} ${(r + c) % 2 ? 'dark' : 'light'}`;
                         
                         if (enableInput) {
                             sq.addEventListener('mousedown', e => this.onMouseDown(e, notation));
@@ -471,7 +626,8 @@
                 }
             }
 
-            // --- AI Logic ---
+            // ... (All other methods like requestAIMove, processAIMove, tryMove, executeMove, etc. remain the same as the last working version) ...
+            
             requestAIMove() {
                 if (this.isGameOver || this.turn !== AI_PLAYER || !sfReady || this.isAnimating) return;
                 
@@ -479,10 +635,9 @@
 
                 const currentFEN = this.getFEN();
                 stockfish.postMessage(`position fen ${currentFEN}`);
-                // Use the configured depth from the ELO settings
                 stockfish.postMessage(`go depth ${currentAISettings.depth}`);
                 
-                console.log(`AI (Black) is thinking at depth ${currentAISettings.depth}...`);
+                console.log(`AI (${this.turn === 'w' ? 'White' : 'Black'}) is thinking at depth ${currentAISettings.depth}...`);
             }
 
             processAIMove() {
@@ -496,7 +651,6 @@
 
                 let moveUCI;
                 
-                // Human mistake logic based on ELO
                 if (Math.random() < currentAISettings.mistake) {
                     const mistakeIndex = Math.floor(Math.random() * (BEST_MOVES.length > 1 ? BEST_MOVES.length : 1));
                     moveUCI = BEST_MOVES[mistakeIndex].move;
@@ -517,7 +671,6 @@
                 this.tryMove(from, to, true);
             }
 
-            // --- GAME OVER ---
             checkGameOver() {
                 let hasMoves = false;
                 for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
@@ -538,20 +691,20 @@
                     gameOverDialog.style.display = 'block';
                 }
             }
-
-
-            // --- ANIMATION / MOVEMENT ---
+            
             async animateMove(from, to) {
                 const fromEl = document.getElementById(from);
                 const toEl = document.getElementById(to);
-                const pieceEl = fromEl?.querySelector('.piece'); // Use optional chaining for safety
+                const pieceEl = fromEl?.querySelector('.piece'); 
                 
                 if (!pieceEl) return;
 
                 const fromRect = fromEl.getBoundingClientRect();
                 const toRect = toEl.getBoundingClientRect();
-                const deltaX = toRect.left - fromRect.left;
-                const deltaY = toRect.top - fromRect.top;
+                // 40 is half the old piece size (80px), 30 is half the new size (60px)
+                const offset = (80 - 60) / 2; 
+                const deltaX = toRect.left - fromRect.left + offset;
+                const deltaY = toRect.top - fromRect.top + offset;
 
                 toEl.innerHTML = '';
                 pieceEl.classList.add('moving-piece');
@@ -566,14 +719,33 @@
             async tryMove(from, to, isAiMove = false) {
                 if (this.isGameOver || this.isAnimating) return false;
                 
+                let uciMove = from + to; 
+                
                 if (this.isMoveLegal(from, to)) {
                     this.isAnimating = true;
                     this.selected = null; 
                     
+                    if (this.isPawnPromotion(from, to)) {
+                        if (isAiMove) {
+                             uciMove += (this.pendingPromo.type.toLowerCase() || 'q'); 
+                        } else if (!this.pendingPromo) {
+                            this.pendingPromo = { from, to, uci: uciMove };
+                            this.showPromo();
+                            this.isAnimating = false; 
+                            return true; 
+                        }
+                    }
+
                     await this.animateMove(from, to);
                     
                     this.executeMove(from, to);
                     this.isAnimating = false;
+                    
+                    if (!this.isPawnPromotion(from, to) || isAiMove || this.pendingPromo === null) {
+                         this.recordMove(uciMove);
+                    }
+
+
                     this.render();
 
                     if (this.isGameOver) return true;
@@ -589,27 +761,31 @@
                 return false;
             }
 
-            // --- STATE UPDATE ---
+            isPawnPromotion(from, to) {
+                const f = toCoords(from);
+                const p = this.board[f.row][f.col];
+                const t = toCoords(to);
+
+                return PIECE_MAP[p].type === 'Pawn' && (t.row === 0 || t.row === 7);
+            }
+            
             executeMove(from, to) {
                 const f = toCoords(from);
                 const t = toCoords(to);
                 const p = this.board[f.row][f.col];
                 const pType = PIECE_MAP[p].type;
                 
-                // En Passant Capture
                 if (pType === 'Pawn' && to === this.enPassant) {
                     const r = this.turn === 'w' ? t.row + 1 : t.row - 1;
                     this.board[r][t.col] = '';
                 }
 
-                // Set En Passant Target
                 this.enPassant = null;
                 if (pType === 'Pawn' && Math.abs(f.row - t.row) === 2) {
                     const r = this.turn === 'w' ? t.row + 1 : t.row - 1;
                     this.enPassant = toNotation(r, t.col);
                 }
 
-                // Castling Move Rook
                 if (pType === 'King' && Math.abs(f.col - t.col) === 2) {
                     const side = t.col > f.col ? 'K' : 'Q';
                     const rFrom = side === 'K' ? 7 : 0;
@@ -618,28 +794,21 @@
                     this.board[f.row][rFrom] = '';
                 }
 
-                // Update Castling Rights
                 if (pType === 'King') { this.castling[this.turn+'K']=false; this.castling[this.turn+'Q']=false; }
                 if (from==='a1'||to==='a1') this.castling.wQ = false;
                 if (from==='h1'||to==='h1') this.castling.wK = false;
                 if (from==='a8'||to==='a8') this.castling.bQ = false;
                 if (from==='h8'||to==='h8') this.castling.bK = false;
 
-                // Move
                 this.board[t.row][t.col] = p;
                 this.board[f.row][f.col] = '';
 
-                // Promotion
-                if (pType === 'Pawn' && (t.row === 0 || t.row === 7)) {
+                if (this.isPawnPromotion(from, to)) {
                     if (this.pendingPromo && this.pendingPromo.type) {
                         const promoCode = this.turn === 'w' ? this.pendingPromo.type : this.pendingPromo.type.toLowerCase();
                         this.board[t.row][t.col] = promoCode;
                         this.pendingPromo = null;
-                    } else {
-                        this.pendingPromo = { to };
-                        this.showPromo();
-                        return;
-                    }
+                    } 
                 }
 
                 this.switchTurn();
@@ -650,10 +819,41 @@
                 this.updateCheckState();
                 this.checkGameOver();
             }
+            
+            showPromo() {
+                promoChoices.innerHTML = '';
+                const c = this.turn;
+                // Pieces for promotion dialog will be black if player is black, white if player is white
+                const promoSuffix = c === 'w' ? '' : 'b'; 
+                
+                ['Q','R','B','N'].forEach(type => {
+                    const div = document.createElement('div');
+                    // We must update the class to show the correct color piece in the dialog
+                    div.className = `piece-choice promo-${type}${c === 'w' ? '' : promoSuffix}`;
+                    div.style.backgroundImage = `url('images/${promoSuffix}${type.toLowerCase()}.png')`; // Ensure correct image is used
 
+                    div.onclick = () => {
+                        const { from, to, uci } = this.pendingPromo;
+                        const t = toCoords(to);
+                        
+                        const promoCode = c === 'w' ? type : type.toLowerCase();
+                        this.board[t.row][t.col] = promoCode;
+                        
+                        promoDialog.style.display = 'none';
+                        this.pendingPromo = null;
+                        
+                        this.recordMove(uci + type.toLowerCase()); 
+                        
+                        this.switchTurn();
+                        this.render();
+                    };
+                    promoChoices.appendChild(div);
+                });
+                promoDialog.style.display = 'block';
+            }
+            
             updateCheckState() { this.inCheck = this.isKingInCheck(this.turn); }
 
-            // --- UI/Input Logic (Drag/Click) ---
             onMouseDown(e, notation) {
                 e.preventDefault();
                 if (this.pendingPromo || this.isAnimating || this.isGameOver || this.turn === AI_PLAYER) return;
@@ -682,12 +882,12 @@
                         this.render();
                     } 
                     const originEl = document.getElementById(this.dragOrigin)?.querySelector('.piece');
-                    if(originEl) originel.style.opacity = '0.2'; 
+                    if(originEl) originEl.style.opacity = '0.2'; 
                 }
 
                 if (this.dragGhost) {
-                    this.dragGhost.style.left = (e.clientX - 40) + 'px';
-                    this.dragGhost.style.top = (e.clientY - 40) + 'px';
+                    this.dragGhost.style.left = (e.clientX - 30) + 'px'; // Adjusted half-size 
+                    this.dragGhost.style.top = (e.clientY - 30) + 'px'; // Adjusted half-size
                 }
             }
 
@@ -723,8 +923,8 @@
                 this.dragGhost = srcEl.cloneNode(true);
                 this.dragGhost.classList.add('dragging');
                 document.body.appendChild(this.dragGhost);
-                this.dragGhost.style.left = (e.clientX - 40) + 'px';
-                this.dragGhost.style.top = (e.clientY - 40) + 'px';
+                this.dragGhost.style.left = (e.clientX - 30) + 'px'; // Adjusted half-size
+                this.dragGhost.style.top = (e.clientY - 30) + 'px'; // Adjusted half-size
             }
 
             removeGhost() {
@@ -734,27 +934,8 @@
                 }
             }
             
-            showPromo() {
-                promoChoices.innerHTML = '';
-                const c = this.turn;
-                ['Q','R','B','N'].forEach(type => {
-                    const div = document.createElement('div');
-                    div.className = `piece-choice promo-${type}`;
-                    div.onclick = () => {
-                        const { to } = this.pendingPromo;
-                        const t = toCoords(to);
-                        this.board[t.row][t.col] = c === 'w' ? type : type.toLowerCase();
-                        promoDialog.style.display = 'none';
-                        this.pendingPromo = null;
-                        this.render();
-                        this.switchTurn();
-                    };
-                    promoChoices.appendChild(div);
-                });
-                promoDialog.style.display = 'block';
-            }
+            // ... (All validation methods remain the same) ...
 
-            // --- MOVEMENT VALIDATION (Unchanged) ---
             isMoveLegal(from, to) {
                 const f = toCoords(from);
                 const t = toCoords(to);
