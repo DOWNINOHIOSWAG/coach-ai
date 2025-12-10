@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess AI Coach - Adjustable ELO</title>
+    <style>
+        /* --- LAYOUT --- */
+        body {
+            display: flex;
+            flex-direction: column; /* Changed to column to stack controls above board */
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            user-select: none;
+            font-family: sans-serif;
+            overflow: hidden; 
+        }
+
+        /* --- CONTROL PANEL --- */
+        #control-panel {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #control-panel label {
+            font-weight: bold;
+            color: #333;
+        }
+
+        #control-panel select {
+            padding: 8px 12px;
+            border-radius: 5px;
+            border: 1px solid #ccc;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        /* --- BOARD STYLES (Kept from previous versions) --- */
+        #chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 80px); 
+            grid-template-rows: repeat(8, 80px);
+            border: 5px solid #333;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            background-color: #333;
+            position: relative; 
+        }
+
+        .square {
+            width: 80px; 
+            height: 80px;
+            box-sizing: border-box; 
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: relative; 
+        }
+
+        .light { background-color: #eed6b0; }
+        .dark { background-color: #b58863; }
+        
+        /* --- PIECES --- */
+        .piece {
+            width: 100%;
+            height: 100%;
+            background-size: 85%;
+            background-repeat: no-repeat;
+            background-position: center;
+            cursor: pointer;
+            z-index: 2;
+            transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+            will-change: transform;
+        }
+
+        /* --- ANIMATION STATE --- */
+        .moving-piece {
+            z-index: 100 !important;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4)); 
+            pointer-events: none;
+        }
+
+        /* Image Mappings (Assumes 'images' folder) */
+        .wk { background-image: url('images/wk.png'); }
+        .wq { background-image: url('images/wq.png'); }
+        .wr { background-image: url('images/wr.png'); }
+        .wb { background-image: url('images/wb.png'); }
+        .wn { background-image: url('images/wn.png'); }
+        .wp { background-image: url('images/wp.png'); }
+        .bk { background-image: url('images/bk.png'); }
+        .bq { background-image: url('images/bq.png'); }
+        .br { background-image: url('images/br.png'); }
+        .bb { background-image: url('images/bb.png'); }
+        .bn { background-image: url('images/bn.png'); }
+        .bp { background-image: url('images/bp.png'); }
+
+        /* --- DRAG GHOST --- */
+        .dragging {
+            position: absolute;
+            width: 80px;
+            height: 80px; 
+            z-index: 9999; 
+            cursor: grabbing;
+            opacity: 0.9;
+            transform: scale(1.15); 
+            pointer-events: none;
+        }
+
+        /* --- HIGHLIGHTS --- */
+        .selected { background-color: rgba(255, 255, 0, 0.5) !important; }
+        .in-check { background-color: rgba(255, 0, 0, 0.6) !important; }
+
+        .move-target::after {
+            content: '';
+            display: block;
+            width: 24px;
+            height: 24px;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+        }
+
+        .square.move-target:not(:empty)::after { display: none; }
+        .square.move-target .piece {
+             box-shadow: inset 0 0 0 6px rgba(0, 0, 0, 0.2);
+             border-radius: 50%;
+        }
+
+        /* --- PROMOTION & GAME OVER DIALOGS --- */
+        .overlay-dialog {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.7);
+            z-index: 10000;
+            display: none;
+            text-align: center;
+        }
+
+        #game-over-dialog h3 {
+            margin-top: 0;
+            font-size: 1.5em;
+        }
+
+        #game-over-dialog button {
+            padding: 10px 20px;
+            font-size: 1.1em;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+
+        /* Promotion UI */
+        .piece-choice {
+            display: inline-block;
+            width: 60px;
+            height: 60px;
+            margin: 5px;
+            cursor: pointer;
+            background-color: #ccc;
+            border-radius: 5px;
+            background-size: 80%;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        .promo-Q { background-image: url('images/wq.png'); }
+        .promo-R { background-image: url('images/wr.png'); }
+        .promo-B { background-image: url('images/wb.png'); }
+        .promo-N { background-image: url('images/wn.png'); }
+    </style>
+</head>
+<body>
+
+    <div id="control-panel">
+        <label for="elo-selector">AI ELO Rating:</label>
+        <select id="elo-selector" onchange="game.setDifficulty(this.value)">
+            <option value="250">250 (Beginner)</option>
+            <option value="500">500 (Novice)</option>
+            <option value="800">800 (Casual)</option>
+            <option value="1100">1100 (Intermediate)</option>
+            <option value="1400">1400 (Club Player)</option>
+            <option value="1700">1700 (Expert)</option>
+            <option value="2000">2000 (Master)</option>
+            <option value="2400">2400 (GM Candidate)</option>
+            <option value="2500">2500 (Grandmaster)</option>
+            <option value="2700" selected>2700 (Super GM - Default)</option>
+        </select>
+    </div>
+    
+    <div id="promotion-dialog" class="overlay-dialog">
+        <h3>Promote to:</h3>
+        <div id="promotion-choices"></div>
+    </div>
+    
+    <div id="game-over-dialog" class="overlay-dialog">
+        <h3 id="game-over-message"></h3>
+        <button onclick="game.restartGame()">Restart Game</button>
+    </div>
+
+    <div id="chessboard"></div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const ROWS = 8;
+        const COLS = 8;
+        const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+        const AI_PLAYER = 'b'; // Black side is the AI
+
+        // --- STOCKFISH ELO MAPPING ---
+        // Maps desired ELO to Stockfish Skill Level, Search Depth, and Mistake Chance
+        const ELO_MAP = {
+            '250':  { skill: 0, depth: 1, mistake: 0.95 },
+            '500':  { skill: 3, depth: 2, mistake: 0.8 },
+            '800':  { skill: 6, depth: 3, mistake: 0.6 },
+            '1100': { skill: 9, depth: 5, mistake: 0.4 },
+            '1400': { skill: 12, depth: 8, mistake: 0.2 },
+            '1700': { skill: 15, depth: 10, mistake: 0.05 },
+            '2000': { skill: 18, depth: 12, mistake: 0.0 },
+            '2400': { skill: 20, depth: 15, mistake: 0.0 },
+            '2500': { skill: 18, depth: 15, mistake: 0.0 }, 
+            '2700': { skill: 20, depth: 18, mistake: 0.0 } // Max strength
+        };
+
+        // --- DOM ELEMENTS ---
+        const boardEl = document.getElementById('chessboard');
+        const promoDialog = document.getElementById('promotion-dialog');
+        const promoChoices = document.getElementById('promotion-choices');
+        const gameOverDialog = document.getElementById('game-over-dialog');
+        const gameOverMessage = document.getElementById('game-over-message');
+        const eloSelector = document.getElementById('elo-selector');
+
+        // --- STOCKFISH WORKER ---
+        let stockfish = null;
+        let sfReady = false;
+        const BEST_MOVES = []; 
+        let currentAISettings = ELO_MAP['2700']; // Start with default GM settings
+
+        function initStockfish() {
+            try {
+                // Ensure stockfish.js is in the same folder and served via http://
+                stockfish = new Worker("stockfish.js"); 
+                
+                stockfish.onmessage = handleStockfishMessage;
+                stockfish.onerror = (e) => {
+                    console.error("Stockfish worker error:", e);
+                    alert("Stockfish AI failed to load. Please ensure 'stockfish.js' is in the same folder and you are running a local web server (e.g., http://localhost:8000).");
+                };
+
+                stockfish.postMessage("uci");
+                stockfish.postMessage("isready");
+
+                console.log("Stockfish worker initiated.");
+            } catch (e) {
+                console.error("Failed to load stockfish.js:", e);
+                alert("Stockfish AI failed to load. Please ensure 'stockfish.js' is in the same folder and you are running a local web server (e.g., http://localhost:8000).");
+            }
+        }
+
+        function configureStockfish() {
+            if (!stockfish || !sfReady) return;
+            // Set the skill level based on the current ELO setting
+            stockfish.postMessage(`setoption name Skill Level value ${currentAISettings.skill}`);
+            console.log(`Stockfish configured: Skill Level ${currentAISettings.skill}, Depth ${currentAISettings.depth}`);
+        }
+
+        function handleStockfishMessage(event) {
+            const line = event.data;
+
+            if (line === "readyok") {
+                sfReady = true;
+                configureStockfish(); // Configure Stockfish now that it's ready
+                if (game.turn === AI_PLAYER) game.requestAIMove();
+            }
+
+            // Capture Best and Alternate Moves
+            if (line.startsWith("info depth") || line.startsWith("bestmove")) {
+                const parts = line.split(' ');
+                
+                if (line.startsWith("info depth")) {
+                    const depthIndex = parts.indexOf("depth");
+                    const depth = depthIndex !== -1 ? parseInt(parts[depthIndex + 1]) : -1;
+                    
+                    // Only store candidate moves for lower depths if AI is set to low skill
+                    if (depth > 10 || currentAISettings.skill < 15) {
+                        const scoreIndex = parts.indexOf("score");
+                        const moveIndex = parts.indexOf("pv");
+                        
+                        if (scoreIndex !== -1 && moveIndex !== -1) {
+                            const scoreValue = parseInt(parts[scoreIndex + 2]);
+                            const move = parts[moveIndex + 1];
+
+                            if (!BEST_MOVES.some(m => m.move === move)) {
+                                BEST_MOVES.push({
+                                    move: move,
+                                    score: scoreValue,
+                                    type: parts[scoreIndex + 1]
+                                });
+                                // Keep the top 3 moves for the mistake logic to choose from
+                                BEST_MOVES.sort((a, b) => b.score - a.score).splice(3);
+                            }
+                        }
+                    }
+                } else if (line.startsWith("bestmove") && BEST_MOVES.length > 0) {
+                    game.processAIMove();
+                }
+            }
+        }
+        
+        // --- CHESS LOGIC ---
+        
+        const PIECE_MAP = {
+            'K': { class: 'wk', type: 'King', color: 'w' }, 'Q': { class: 'wq', type: 'Queen', color: 'w' },
+            'R': { class: 'wr', type: 'Rook', color: 'w' }, 'B': { class: 'wb', type: 'Bishop', color: 'w' },
+            'N': { class: 'wn', type: 'Knight', color: 'w' }, 'P': { class: 'wp', type: 'Pawn', color: 'w' },
+            'k': { class: 'bk', type: 'King', color: 'b' }, 'q': { class: 'bq', type: 'Queen', color: 'b' },
+            'r': { class: 'br', type: 'Rook', color: 'b' }, 'b': { class: 'bb', type: 'Bishop', color: 'b' },
+            'n': { class: 'bn', type: 'Knight', color: 'b' }, 'p': { class: 'bp', type: 'Pawn', color: 'b' },
+            '': { class: '', type: 'Empty', color: '' }
+        };
+
+        function toCoords(notation) {
+            const col = notation.charCodeAt(0) - 97;
+            const row = 8 - parseInt(notation[1]);
+            return { row, col };
+        }
+        function toNotation(row, col) {
+            return String.fromCharCode(97 + col) + (8 - row);
+        }
+
+        class ChessGame {
+            constructor() {
+                document.addEventListener('mousemove', e => this.onMouseMove(e));
+                document.addEventListener('mouseup', e => this.onMouseUp(e));
+                
+                // Initialize settings from the selector's default value (2700)
+                this.setDifficulty(eloSelector.value);
+                this.initBoard();
+                this.render();
+            }
+            
+            setDifficulty(elo) {
+                currentAISettings = ELO_MAP[elo];
+                // Reconfigure Stockfish immediately if it's ready
+                configureStockfish(); 
+                console.log(`AI difficulty set to ELO ${elo}`);
+            }
+
+            initBoard() {
+                this.board = Array(ROWS).fill(null).map(() => Array(COLS).fill('')); 
+                this.turn = 'w';
+                this.castling = { wK: true, wQ: true, bK: true, bQ: true };
+                this.enPassant = null;
+                this.selected = null; 
+                this.pendingPromo = null;
+                this.inCheck = false;
+                this.dragOrigin = null;
+                this.dragGhost = null;
+                this.isDragging = false;
+                this.isAnimating = false;
+                this.isGameOver = false;
+
+                this.loadFEN(START_FEN);
+                gameOverDialog.style.display = 'none';
+            }
+
+            restartGame() {
+                this.initBoard();
+                this.render();
+                if (this.turn === AI_PLAYER) this.requestAIMove();
+            }
+
+            getFEN() {
+                let fen = "";
+                for (let r = 0; r < 8; r++) {
+                    let emptyCount = 0;
+                    for (let c = 0; c < 8; c++) {
+                        const piece = this.board[r][c];
+                        if (piece) {
+                            if (emptyCount > 0) {
+                                fen += emptyCount;
+                                emptyCount = 0;
+                            }
+                            fen += piece;
+                        } else {
+                            emptyCount++;
+                        }
+                    }
+                    if (emptyCount > 0) fen += emptyCount;
+                    if (r < 7) fen += "/";
+                }
+                
+                fen += ` ${this.turn}`;
+                
+                let castlingStr = "";
+                if (this.castling.wK) castlingStr += "K";
+                if (this.castling.wQ) castlingStr += "Q";
+                if (this.castling.bK) castlingStr += "k";
+                if (this.castling.bQ) castlingStr += "q";
+                fen += ` ${castlingStr || '-'}`;
+                
+                fen += ` ${this.enPassant || '-'}`;
+                fen += ` 0 1`;
+                
+                return fen;
+            }
+
+            loadFEN(fen) {
+                const parts = fen.split(' ');
+                let r = 0, c = 0;
+                for (const char of parts[0]) {
+                    if (char === '/') { r++; c = 0; } 
+                    else if (/\d/.test(char)) { c += parseInt(char); } 
+                    else { this.board[r][c] = char; c++; }
+                }
+                this.turn = parts[1];
+                this.updateCheckState();
+            }
+
+            render() {
+                if (this.isAnimating) return; 
+
+                boardEl.innerHTML = '';
+                const enableInput = this.turn !== AI_PLAYER && !this.isGameOver;
+
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const sq = document.createElement('div');
+                        const notation = toNotation(r, c);
+                        sq.id = notation;
+                        sq.className = `square ${(r + c) % 2 ? 'dark' : 'light'}`;
+                        
+                        if (enableInput) {
+                            sq.addEventListener('mousedown', e => this.onMouseDown(e, notation));
+                        }
+
+                        const pCode = this.board[r][c];
+                        if (pCode) {
+                            const pDiv = document.createElement('div');
+                            pDiv.className = `piece ${PIECE_MAP[pCode].class}`;
+                            sq.appendChild(pDiv);
+                        }
+                        
+                        if (this.selected === notation) sq.classList.add('selected');
+                        
+                        if (this.inCheck && pCode && PIECE_MAP[pCode].type === 'King' && PIECE_MAP[pCode].color === this.turn) {
+                            sq.classList.add('in-check');
+                        }
+
+                        boardEl.appendChild(sq);
+                    }
+                }
+                
+                if (this.selected) {
+                    this.getLegalMoves(this.selected).forEach(m => {
+                        document.getElementById(m)?.classList.add('move-target');
+                    });
+                }
+            }
+
+            // --- AI Logic ---
+            requestAIMove() {
+                if (this.isGameOver || this.turn !== AI_PLAYER || !sfReady || this.isAnimating) return;
+                
+                BEST_MOVES.length = 0;
+
+                const currentFEN = this.getFEN();
+                stockfish.postMessage(`position fen ${currentFEN}`);
+                // Use the configured depth from the ELO settings
+                stockfish.postMessage(`go depth ${currentAISettings.depth}`);
+                
+                console.log(`AI (Black) is thinking at depth ${currentAISettings.depth}...`);
+            }
+
+            processAIMove() {
+                if (BEST_MOVES.length === 0) {
+                    console.error("Stockfish returned no moves!");
+                    this.switchTurn();
+                    return;
+                }
+
+                BEST_MOVES.sort((a, b) => b.score - a.score);
+
+                let moveUCI;
+                
+                // Human mistake logic based on ELO
+                if (Math.random() < currentAISettings.mistake) {
+                    const mistakeIndex = Math.floor(Math.random() * (BEST_MOVES.length > 1 ? BEST_MOVES.length : 1));
+                    moveUCI = BEST_MOVES[mistakeIndex].move;
+                    console.log(`AI made a mistake! Chose candidate ${mistakeIndex + 1}: ${moveUCI}`);
+                } else {
+                    moveUCI = BEST_MOVES[0].move;
+                    console.log(`AI chose best move: ${moveUCI}`);
+                }
+                
+                const from = moveUCI.substring(0, 2);
+                const to = moveUCI.substring(2, 4);
+                const promotion = moveUCI.length === 5 ? moveUCI.substring(4, 5) : null;
+                
+                if (promotion) {
+                    this.pendingPromo = { to, type: promotion.toUpperCase() };
+                }
+
+                this.tryMove(from, to, true);
+            }
+
+            // --- GAME OVER ---
+            checkGameOver() {
+                let hasMoves = false;
+                for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+                    const p = this.board[r][c];
+                    if(p && PIECE_MAP[p].color === this.turn) {
+                        if(this.getLegalMoves(toNotation(r,c)).length > 0) hasMoves = true;
+                    }
+                }
+
+                if (!hasMoves) {
+                    this.isGameOver = true;
+                    if (this.inCheck) {
+                        const winner = this.turn === 'w' ? 'Black' : 'White';
+                        gameOverMessage.textContent = `Checkmate! ${winner} Wins! 👑`;
+                    } else {
+                        gameOverMessage.textContent = "Stalemate! Game is a Draw.";
+                    }
+                    gameOverDialog.style.display = 'block';
+                }
+            }
+
+
+            // --- ANIMATION / MOVEMENT ---
+            async animateMove(from, to) {
+                const fromEl = document.getElementById(from);
+                const toEl = document.getElementById(to);
+                const pieceEl = fromEl?.querySelector('.piece'); // Use optional chaining for safety
+                
+                if (!pieceEl) return;
+
+                const fromRect = fromEl.getBoundingClientRect();
+                const toRect = toEl.getBoundingClientRect();
+                const deltaX = toRect.left - fromRect.left;
+                const deltaY = toRect.top - fromRect.top;
+
+                toEl.innerHTML = '';
+                pieceEl.classList.add('moving-piece');
+                pieceEl.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+
+                return new Promise(resolve => {
+                    pieceEl.addEventListener('transitionend', () => resolve(), { once: true });
+                    setTimeout(resolve, 300);
+                });
+            }
+
+            async tryMove(from, to, isAiMove = false) {
+                if (this.isGameOver || this.isAnimating) return false;
+                
+                if (this.isMoveLegal(from, to)) {
+                    this.isAnimating = true;
+                    this.selected = null; 
+                    
+                    await this.animateMove(from, to);
+                    
+                    this.executeMove(from, to);
+                    this.isAnimating = false;
+                    this.render();
+
+                    if (this.isGameOver) return true;
+
+                    if (!isAiMove && this.turn === AI_PLAYER) {
+                         this.requestAIMove();
+                    }
+
+                    return true;
+                }
+                this.selected = null;
+                this.render();
+                return false;
+            }
+
+            // --- STATE UPDATE ---
+            executeMove(from, to) {
+                const f = toCoords(from);
+                const t = toCoords(to);
+                const p = this.board[f.row][f.col];
+                const pType = PIECE_MAP[p].type;
+                
+                // En Passant Capture
+                if (pType === 'Pawn' && to === this.enPassant) {
+                    const r = this.turn === 'w' ? t.row + 1 : t.row - 1;
+                    this.board[r][t.col] = '';
+                }
+
+                // Set En Passant Target
+                this.enPassant = null;
+                if (pType === 'Pawn' && Math.abs(f.row - t.row) === 2) {
+                    const r = this.turn === 'w' ? t.row + 1 : t.row - 1;
+                    this.enPassant = toNotation(r, t.col);
+                }
+
+                // Castling Move Rook
+                if (pType === 'King' && Math.abs(f.col - t.col) === 2) {
+                    const side = t.col > f.col ? 'K' : 'Q';
+                    const rFrom = side === 'K' ? 7 : 0;
+                    const rTo = side === 'K' ? 5 : 3;
+                    this.board[f.row][rTo] = this.board[f.row][rFrom];
+                    this.board[f.row][rFrom] = '';
+                }
+
+                // Update Castling Rights
+                if (pType === 'King') { this.castling[this.turn+'K']=false; this.castling[this.turn+'Q']=false; }
+                if (from==='a1'||to==='a1') this.castling.wQ = false;
+                if (from==='h1'||to==='h1') this.castling.wK = false;
+                if (from==='a8'||to==='a8') this.castling.bQ = false;
+                if (from==='h8'||to==='h8') this.castling.bK = false;
+
+                // Move
+                this.board[t.row][t.col] = p;
+                this.board[f.row][f.col] = '';
+
+                // Promotion
+                if (pType === 'Pawn' && (t.row === 0 || t.row === 7)) {
+                    if (this.pendingPromo && this.pendingPromo.type) {
+                        const promoCode = this.turn === 'w' ? this.pendingPromo.type : this.pendingPromo.type.toLowerCase();
+                        this.board[t.row][t.col] = promoCode;
+                        this.pendingPromo = null;
+                    } else {
+                        this.pendingPromo = { to };
+                        this.showPromo();
+                        return;
+                    }
+                }
+
+                this.switchTurn();
+            }
+
+            switchTurn() {
+                this.turn = this.turn === 'w' ? 'b' : 'w';
+                this.updateCheckState();
+                this.checkGameOver();
+            }
+
+            updateCheckState() { this.inCheck = this.isKingInCheck(this.turn); }
+
+            // --- UI/Input Logic (Drag/Click) ---
+            onMouseDown(e, notation) {
+                e.preventDefault();
+                if (this.pendingPromo || this.isAnimating || this.isGameOver || this.turn === AI_PLAYER) return;
+
+                const { row, col } = toCoords(notation);
+                const p = this.board[row][col];
+                
+                if (p && PIECE_MAP[p].color === this.turn) {
+                    this.dragOrigin = notation;
+                    this.isDragging = false;
+                } else if (this.selected) {
+                    this.tryMove(this.selected, notation);
+                    this.dragOrigin = null;
+                }
+            }
+
+            onMouseMove(e) {
+                if (!this.dragOrigin) return;
+
+                if (!this.isDragging) {
+                    this.isDragging = true;
+                    this.createGhost(e);
+                    
+                    if (this.selected !== this.dragOrigin) {
+                        this.selected = this.dragOrigin;
+                        this.render();
+                    } 
+                    const originEl = document.getElementById(this.dragOrigin)?.querySelector('.piece');
+                    if(originEl) originel.style.opacity = '0.2'; 
+                }
+
+                if (this.dragGhost) {
+                    this.dragGhost.style.left = (e.clientX - 40) + 'px';
+                    this.dragGhost.style.top = (e.clientY - 40) + 'px';
+                }
+            }
+
+            onMouseUp(e) {
+                if (!this.dragOrigin || this.isAnimating) return;
+
+                const originEl = document.getElementById(this.dragOrigin)?.querySelector('.piece');
+                if(originEl) originEl.style.opacity = '1';
+
+                if (this.isDragging) {
+                    this.removeGhost();
+                    const targetEl = document.elementFromPoint(e.clientX, e.clientY);
+                    const sq = targetEl?.closest('.square');
+                    
+                    if (sq) {
+                        this.tryMove(this.dragOrigin, sq.id);
+                    } else {
+                        this.render();
+                    }
+                } else {
+                    if (this.selected === this.dragOrigin) this.selected = null;
+                    else this.selected = this.dragOrigin;
+                    this.render();
+                }
+
+                this.dragOrigin = null;
+                this.isDragging = false;
+            }
+
+            createGhost(e) {
+                const srcEl = document.getElementById(this.dragOrigin)?.querySelector('.piece');
+                if (!srcEl) return;
+                this.dragGhost = srcEl.cloneNode(true);
+                this.dragGhost.classList.add('dragging');
+                document.body.appendChild(this.dragGhost);
+                this.dragGhost.style.left = (e.clientX - 40) + 'px';
+                this.dragGhost.style.top = (e.clientY - 40) + 'px';
+            }
+
+            removeGhost() {
+                if (this.dragGhost) {
+                    this.dragGhost.remove();
+                    this.dragGhost = null;
+                }
+            }
+            
+            showPromo() {
+                promoChoices.innerHTML = '';
+                const c = this.turn;
+                ['Q','R','B','N'].forEach(type => {
+                    const div = document.createElement('div');
+                    div.className = `piece-choice promo-${type}`;
+                    div.onclick = () => {
+                        const { to } = this.pendingPromo;
+                        const t = toCoords(to);
+                        this.board[t.row][t.col] = c === 'w' ? type : type.toLowerCase();
+                        promoDialog.style.display = 'none';
+                        this.pendingPromo = null;
+                        this.render();
+                        this.switchTurn();
+                    };
+                    promoChoices.appendChild(div);
+                });
+                promoDialog.style.display = 'block';
+            }
+
+            // --- MOVEMENT VALIDATION (Unchanged) ---
+            isMoveLegal(from, to) {
+                const f = toCoords(from);
+                const t = toCoords(to);
+                const p = this.board[f.row][f.col];
+                const target = this.board[t.row][t.col];
+
+                if (!p) return false;
+                const pData = PIECE_MAP[p];
+                const tData = PIECE_MAP[target] || { color: '' };
+
+                if (pData.color !== this.turn || pData.color === tData.color) return false;
+
+                let valid = false;
+                const dy = t.row - f.row;
+                const dx = t.col - f.col;
+                const ady = Math.abs(dy);
+                const adx = Math.abs(dx);
+
+                if (pData.type === 'Pawn') {
+                    const dir = pData.color === 'w' ? -1 : 1;
+                    const start = pData.color === 'w' ? 6 : 1;
+                    if (adx === 0 && !target) {
+                        if (dy === dir) valid = true;
+                        else if (f.row === start && dy === dir * 2 && !this.board[f.row + dir][f.col]) valid = true;
+                    } else if (adx === 1 && dy === dir) {
+                        if (target || to === this.enPassant) valid = true;
+                    }
+                } 
+                else if (pData.type === 'Knight') {
+                    if ((ady === 2 && adx === 1) || (ady === 1 && adx === 2)) valid = true;
+                } 
+                else if (pData.type === 'King') {
+                    if (ady <= 1 && adx <= 1) valid = true;
+                    else if (ady === 0 && adx === 2) valid = this.canCastle(f, t);
+                } 
+                else {
+                    const isDiag = adx === ady;
+                    const isLine = adx === 0 || ady === 0;
+                    if (pData.type === 'Rook' && isLine || pData.type === 'Bishop' && isDiag || pData.type === 'Queen' && (isDiag||isLine)) {
+                        valid = this.isPathClear(f, t);
+                    }
+                }
+
+                if (!valid) return false;
+                return !this.testMoveForCheck(f, t);
+            }
+
+            isPathClear(f, t) {
+                const dy = Math.sign(t.row - f.row);
+                const dx = Math.sign(t.col - f.col);
+                let r = f.row + dy, c = f.col + dx;
+                while (r !== t.row || c !== t.col) {
+                    if (this.board[r][c]) return false;
+                    r += dy; c += dx;
+                }
+                return true;
+            }
+
+            canCastle(f, t) {
+                if (this.inCheck) return false;
+                const side = t.col > f.col ? 'K' : 'Q';
+                if (!this.castling[this.turn + side]) return false;
+                const dir = Math.sign(t.col - f.col);
+                for (let c = f.col + dir; c !== t.col + dir; c += dir) {
+                   if (this.isSquareAttacked(f.row, c, this.turn === 'w' ? 'b' : 'w')) return false;
+                   if (c !== t.col && this.board[f.row][c]) return false;
+                }
+                if(!this.board[f.row][side==='K'?7:0]) return false;
+                return true;
+            }
+
+            testMoveForCheck(f, t) {
+                const p = this.board[f.row][f.col];
+                const target = this.board[t.row][t.col];
+                let epCap = null;
+
+                this.board[t.row][t.col] = p;
+                this.board[f.row][f.col] = '';
+                if (PIECE_MAP[p].type === 'Pawn' && toNotation(t.row, t.col) === this.enPassant) {
+                    const r = this.turn === 'w' ? t.row + 1 : t.row - 1;
+                    epCap = { r, c: t.col, val: this.board[r][t.col] };
+                    this.board[r][t.col] = '';
+                }
+
+                const result = this.isKingInCheck(this.turn);
+
+                if (epCap) this.board[epCap.r][epCap.c] = epCap.val;
+                this.board[f.row][f.col] = p;
+                this.board[t.row][t.col] = target;
+                return result;
+            }
+
+            isKingInCheck(color) {
+                let kr, kc;
+                for (let r = 0; r < 8; r++) {
+                    for (let c = 0; c < 8; c++) {
+                        const p = this.board[r][c];
+                        if (p && PIECE_MAP[p].type === 'King' && PIECE_MAP[p].color === color) {
+                            kr = r; kc = c; break;
+                        }
+                    }
+                }
+                if (typeof kr === 'undefined') return false; 
+                return this.isSquareAttacked(kr, kc, color === 'w' ? 'b' : 'w');
+            }
+
+            isSquareAttacked(r, c, attackerColor) {
+                for (let tr = 0; tr < 8; tr++) {
+                    for (let tc = 0; tc < 8; tc++) {
+                        const p = this.board[tr][tc];
+                        if (p && PIECE_MAP[p].color === attackerColor) {
+                            const pType = PIECE_MAP[p].type;
+                            const dy = r - tr;
+                            const dx = c - tc;
+                            const ady = Math.abs(dy);
+                            const adx = Math.abs(dx);
+                            
+                            if(pType === 'Pawn') {
+                                const dir = attackerColor==='w'?-1:1;
+                                if(dy === dir && adx === 1) return true;
+                            }
+                            else if (pType === 'Knight') {
+                                if((ady===2&&adx===1)||(ady===1&&adx===2)) return true;
+                            }
+                            else if (pType === 'King') {
+                                if(ady<=1 && adx<=1) return true;
+                            }
+                            else {
+                                const isDiag = adx===ady;
+                                const isLine = adx===0 || ady===0;
+                                let canHit = false;
+                                if(pType === 'Rook' && isLine) canHit=true;
+                                if(pType === 'Bishop' && isDiag) canHit=true;
+                                if(pType === 'Queen' && (isDiag||isLine)) canHit=true;
+                                if(canHit && this.isPathClear({row:tr,col:tc}, {row:r,col:c})) return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            }
+
+            getLegalMoves(pos) {
+                const moves = [];
+                for(let r=0;r<8;r++) for(let c=0;c<8;c++) {
+                    const target = toNotation(r,c);
+                    if(this.isMoveLegal(pos, target)) moves.push(target);
+                }
+                return moves;
+            }
+        }
+
+        const game = new ChessGame();
+        initStockfish();
+    </script>
+</body>
+</html>
