@@ -364,11 +364,11 @@
 
         // --- MOVE CLASSIFICATION THRESHOLDS (Centipawns) ---
         const MOVE_THRESHOLDS = {
-            BLUNDER: 300,       // Drop of 3.00 pawns or more
-            MISTAKE: 100,       // Drop of 1.00 - 2.99 pawns
-            INACCURACY: 50,     // Drop of 0.50 - 0.99 pawns
-            GREAT_MOVE: 10,     // Loss of 0.10 - 0.24 pawns (relative to best)
-            BEST_MOVE: 5,       // Loss of less than 0.05 pawns (relative to best)
+            BLUNDER: 300,       
+            MISTAKE: 100,       
+            INACCURACY: 50,     
+            GREAT_MOVE: 10,     
+            BEST_MOVE: 5,       
         };
         
         // --- Simplified Opening Database (for display only) ---
@@ -418,10 +418,10 @@
         const BEST_MOVES = []; 
         let currentAISettings = ELO_MAP['2700']; 
         
-        // FEN History and Analysis State
-        let currentAnalysisMoveIndex = -1; // Index in moveHistory currently being analyzed
-        let analysisMultiPV = [];          // Stores multipv results during analysis
-        let isAiMoveRequested = false;     // Flag to distinguish AI move calculation from live analysis
+        let currentAnalysisMoveIndex = -1; 
+        let analysisMultiPV = [];          
+        let isAiMoveRequested = false;     
+        let pendingLegalMovesRequest = null; 
 
         function initStockfish() {
             try {
@@ -461,6 +461,28 @@
                 game.requestLiveEvaluation(); 
             }
             
+            // --- Legal Move List Response ---
+            if (pendingLegalMovesRequest && line.startsWith("Legal moves:")) {
+                // Stockfish "d" command output often includes "Legal moves: ..."
+                const moves = line.substring(13).trim().split(/\s+/).filter(m => m.length > 0);
+                const resolve = pendingLegalMovesRequest.resolve;
+                const checkStatusLine = pendingLegalMovesRequest.checkStatusLine;
+                
+                pendingLegalMovesRequest = null;
+                
+                // Extract check status if available in the previous line of the 'd' command output
+                const inCheck = checkStatusLine ? checkStatusLine.includes("Check: true") : false;
+
+                resolve({ moves, inCheck });
+                return; 
+            }
+            // Capture the line preceding the "Legal moves:" line, which often contains FEN and Check status
+            if (pendingLegalMovesRequest && line.startsWith("Fen:")) {
+                 pendingLegalMovesRequest.checkStatusLine = line;
+                 return;
+            }
+
+
             // --- Analysis Mode (MultiPV) ---
             if (currentAnalysisMoveIndex >= 0 && line.startsWith("info depth") && line.includes("multipv")) {
                 const parts = line.split(' ');
@@ -476,7 +498,6 @@
                     analysisMultiPV.push({ score: scoreValue, move: move, multipv: multipv });
                 }
             } else if (currentAnalysisMoveIndex >= 0 && line.startsWith("bestmove")) {
-                // Analysis is complete for the "before move" position
                 game.processAnalysisResult();
             }
 
@@ -489,7 +510,6 @@
                     const scoreValue = parseInt(parts[scoreIndex + 2]);
                     const scoreType = parts[scoreIndex + 1];
 
-                    // Store candidate moves for AI choice (blundering) if we are waiting for an AI move
                     if(isAiMoveRequested) {
                         const moveIndex = parts.indexOf("pv");
                         if (moveIndex !== -1) {
@@ -501,7 +521,6 @@
                         }
                     }
                     
-                    // Update evaluation display (only from the main PV)
                     if (scoreType === 'cp') {
                         game.updateEvaluationDisplay(scoreValue / 100, 'cp');
                     } else if (scoreType === 'mate') {
@@ -509,7 +528,6 @@
                     }
                 }
             } else if (currentAnalysisMoveIndex < 0 && line.startsWith("bestmove")) {
-                // AI Move is calculated
                 if (isAiMoveRequested && BEST_MOVES.length > 0) { 
                     game.processAIMove();
                 }
@@ -624,8 +642,7 @@
                 
                 const turnToUse = currentTurn || this.turn;
                 
-                // Calculate clocks based on current history length
-                const halfMoveClock = 0; // Simplified. True HMC needs tracking.
+                const halfMoveClock = 0; 
                 const fullMoveNumber = Math.floor(this.moveHistory.length / 2) + 1;
 
                 let castlingStr = "";
@@ -650,7 +667,7 @@
                     else { this.board[r][c] = char; c++; }
                 }
                 this.turn = parts[1];
-                this.updateCheckState();
+                // In a proper engine, we would check for check here. For now, rely on `checkGameOver`
             }
 
             // --- History and Analysis Updates ---
@@ -672,7 +689,6 @@
 
                 for (let i = 0; i < this.moveHistory.length; i++) {
                     const uci = this.moveHistory[i];
-                    // Find classification for the move at index i (the one just played)
                     const analysis = this.analysisScores.find(a => a.moveIndex === i);
                     const classification = (i < 4 && !analysis) ? 'Book' : (analysis ? analysis.classification : '...');
                     const classificationHTML = classification !== '...' 
@@ -708,16 +724,13 @@
             analyzeNextMove() {
                 if (!sfReady) return;
 
-                // Move index to analyze: one beyond the last move we finished analyzing
                 const nextIndex = this.analysisScores.length;
 
                 if (nextIndex >= this.moveHistory.length) {
-                    currentAnalysisMoveIndex = -1; // Analysis queue is empty
+                    currentAnalysisMoveIndex = -1; 
                     return;
                 }
                 
-                // The position *before* the move played at nextIndex is stored at index nextIndex in fenHistory
-                // (Because fenHistory[0] is START_FEN, fenHistory[1] is after move 1, etc.)
                 const FEN_before = this.fenHistory[nextIndex]; 
                 
                 currentAnalysisMoveIndex = nextIndex;
@@ -775,18 +788,19 @@
             render() {
                 if (this.isAnimating) return; 
 
+                document.querySelectorAll('.move-target').forEach(el => el.classList.remove('move-target'));
                 boardEl.innerHTML = '';
                 const enableInput = this.turn !== AI_PLAYER && !this.isGameOver;
                 const squareSizeClass = 'square-size'; 
 
-                // Determine if board should be flipped
-                const flip = this.userSelectedColor === 'b' && AI_PLAYER === 'w'; 
+                const flip = this.userSelectedColor === 'b'; 
 
                 for (let i = 0; i < 64; i++) {
                     let r, c;
+                    
                     if (flip) {
                         r = Math.floor(i / 8);
-                        c = 7 - (i % 8);
+                        c = i % 8;
                     } else {
                         r = 7 - Math.floor(i / 8);
                         c = i % 8;
@@ -810,37 +824,43 @@
                     
                     if (this.selected === notation) sq.classList.add('selected');
                     
-                    const kingRow = this.turn === 'w' ? 7 : 0;
                     if (this.inCheck && pCode && PIECE_MAP[pCode].type === 'King' && PIECE_MAP[pCode].color === this.turn) {
                         sq.classList.add('in-check');
                     }
 
                     boardEl.appendChild(sq);
                 }
-                
+            }
+            
+            async updateHighlights() {
+                document.querySelectorAll('.move-target').forEach(el => el.classList.remove('move-target'));
+
                 if (this.selected) {
-                    this.getLegalMoves(this.selected).forEach(m => {
-                        document.getElementById(m)?.classList.add('move-target');
+                    const { moves } = await this.getLegalMoves(this.selected);
+                    moves.forEach(m => {
+                        // Move is in UCI format (e.g., e2e4, a7a8q)
+                        document.getElementById(m.substring(2, 4))?.classList.add('move-target');
                     });
                 }
             }
-            
+
             updateEvaluationDisplay(score, type) {
                 if (!sfReady) return;
                 
                 let percent;
                 let scoreText;
-                const turnColor = this.turn === 'w' ? 1 : -1;
+                const perspective = this.userSelectedColor === 'w' ? 1 : -1;
+                const scoreInUserPerspective = score * perspective;
 
                 if (type === 'mate') {
-                    percent = score > 0 ? 100 : 0;
+                    percent = scoreInUserPerspective > 0 ? 100 : 0;
                     scoreText = `M${Math.abs(score)}`;
                 } else {
-                    const cappedScore = score * turnColor; 
+                    const cappedScore = scoreInUserPerspective;
                     const maxCp = 1000;
-                    const normalizedScore = Math.min(Math.max(cappedScore, -maxCp), maxCp) / maxCp;
+                    const normalizedScore = 500 + Math.min(Math.max(cappedScore, -maxCp), maxCp) / 2;
                     
-                    percent = 50 + (50 * normalizedScore);
+                    percent = normalizedScore / 10;
                     
                     const actualScore = score;
                     const sign = actualScore > 0 ? '+' : '';
@@ -883,16 +903,13 @@
                 stockfish.postMessage(`position fen ${currentFEN}`);
                 
                 stockfish.postMessage(`go movetime ${currentAISettings.movetime}`); 
-                
-                console.log(`AI (${this.turn === 'w' ? 'White' : 'Black'}) is calculating move...`);
             }
 
             processAIMove() {
                 isAiMoveRequested = false;
 
                 if (BEST_MOVES.length === 0) {
-                    console.error("Stockfish returned no candidate moves!");
-                    this.switchTurn();
+                    this.checkGameOver(); 
                     return;
                 }
 
@@ -916,7 +933,7 @@
                     this.pendingPromo = { from, to, type: promoType };
                 }
 
-                this.tryMove(from, to, true);
+                this.tryMove(from, to, true, moveUCI);
             }
             
             async animateMove(from, to) {
@@ -927,6 +944,9 @@
                 if (!pieceEl) return;
                 
                 this.isAnimating = true;
+                const targetPiece = toEl.querySelector('.piece');
+                if (targetPiece) targetPiece.style.visibility = 'hidden';
+                
                 pieceEl.classList.add('moving-piece');
                 
                 const fromRect = fromEl.getBoundingClientRect();
@@ -939,6 +959,7 @@
 
                 return new Promise(resolve => {
                     setTimeout(() => {
+                        if (targetPiece) targetPiece.style.visibility = 'visible';
                         this.isAnimating = false;
                         pieceEl.classList.remove('moving-piece');
                         pieceEl.style.transform = '';
@@ -947,18 +968,21 @@
                 });
             }
 
-            async tryMove(from, to, isAiMove = false) {
+            async tryMove(from, to, isAiMove = false, uciMoveOverride = null) {
                 if (this.isGameOver || this.isAnimating) return false;
                 
-                let uciMove = from + to; 
+                let uciMove = uciMoveOverride || (from + to); 
                 
-                if (this.isMoveLegal(from, to)) {
+                const { moves: legalMoves } = await this.getLegalMoves(from);
+                const isLegal = legalMoves.some(m => m.startsWith(from + to));
+
+                if (isLegal) {
                     this.isAnimating = true;
                     this.selected = null; 
                     
                     if (this.isPawnPromotion(from, to)) {
                         if (isAiMove) {
-                             uciMove += (this.pendingPromo.type.toLowerCase() || 'q'); 
+                            // AI move already contains the promotion piece in uciMoveOverride
                         } else if (!this.pendingPromo) {
                             this.pendingPromo = { from, to, uci: uciMove };
                             await this.animateMove(from, to); 
@@ -973,9 +997,12 @@
                     this.executeMove(from, to);
                     this.isAnimating = false;
                     
-                    // Only record the move after full execution/promotion resolve
+                    const finalUci = this.pendingPromo && this.pendingPromo.type
+                        ? uciMove + this.pendingPromo.type.toLowerCase()
+                        : uciMove;
+
                     if (!this.isPawnPromotion(from, to) || isAiMove || this.pendingPromo === null) {
-                         this.recordMove(uciMove);
+                         this.recordMove(finalUci);
                     }
 
                     this.render();
@@ -990,6 +1017,7 @@
                 }
                 this.selected = null;
                 this.render();
+                await this.updateHighlights();
                 return false;
             }
 
@@ -1015,11 +1043,11 @@
 
                 // Castling
                 if (pType === 'King' && Math.abs(f.col - t.col) === 2) {
-                    const side = t.col > f.col ? 'K' : 'Q';
-                    const rFrom = side === 'K' ? 7 : 0;
-                    const rTo = side === 'K' ? 5 : 3;
-                    this.board[f.row][rTo] = this.board[f.row][rFrom];
-                    this.board[f.row][rFrom] = '';
+                    const rookRow = f.row;
+                    const rookFromCol = t.col > f.col ? 7 : 0;
+                    const rookToCol = t.col > f.col ? 5 : 3;
+                    this.board[rookRow][rookToCol] = this.board[rookRow][rookFromCol];
+                    this.board[rookRow][rookFromCol] = '';
                 }
 
                 // Castling Rights Update
@@ -1047,16 +1075,17 @@
 
             switchTurn() {
                 this.turn = this.turn === 'w' ? 'b' : 'w';
-                this.updateCheckState();
-                this.checkGameOver();
+                this.checkGameOver(); 
             }
             
-            checkGameOver() {
-                // Simplified check: only looks for checkmate/stalemate using the move generator
-                const legalMoves = this.getLegalMoves(null);
+            async checkGameOver() {
+                const { moves, inCheck } = await this.getLegalMoves(null);
                 
-                if (legalMoves.length === 0) {
+                this.inCheck = inCheck; // Update check state based on engine's report
+                
+                if (moves.length === 0) {
                     this.isGameOver = true;
+
                     if (this.inCheck) {
                         gameOverMessage.textContent = `${this.turn === 'w' ? 'Black' : 'White'} wins by Checkmate!`;
                     } else {
@@ -1065,38 +1094,43 @@
                     gameOverDialog.style.display = 'block';
                 }
             }
-            
-            updateCheckState() { this.inCheck = this.isKingInCheck(this.turn); }
+
 
             // --- Move Input Handling ---
-            onMouseDown(e, notation) {
+            async onMouseDown(e, notation) { 
                 if (this.isAnimating || this.isGameOver || this.turn === AI_PLAYER) return;
                 
                 const { row, col } = toCoords(notation);
                 const piece = this.board[row][col];
                 const pieceColor = piece ? PIECE_MAP[piece].color : null;
                 
-                if (this.selected) {
-                    this.tryMove(this.selected, notation);
-                    this.selected = null;
-                } else if (piece && pieceColor === this.turn) {
-                    this.selected = notation;
+                const previousSelection = this.selected;
+
+                if (previousSelection) {
+                    const moveSucceeded = await this.tryMove(previousSelection, notation); 
+                    if (moveSucceeded) return; 
                 }
-                this.render();
+                
+                // If the move didn't succeed, or if no piece was selected before:
+                if (piece && pieceColor === this.turn) {
+                    this.selected = notation;
+                } else {
+                    this.selected = null; 
+                }
+                
+                this.render(); 
+                await this.updateHighlights(); 
             }
             
             onMouseMove(e) {
-                // Dragging logic (Omitted for brevity, but necessary for proper drag-and-drop)
+                // Dragging logic (Skipped)
             }
             onMouseUp(e) {
-                // Dropping logic (Omitted for brevity, but necessary for proper drag-and-drop)
+                // Dropping logic (Skipped)
             }
 
-            // --- VALIDATION METHODS (Simplified for functionality) ---
 
-            isMoveLegal(from, to) {
-                return this.getLegalMoves(from).includes(to);
-            }
+            // --- VALIDATION METHODS (Uses Stockfish) ---
             
             isPawnPromotion(from, to) {
                 const f = toCoords(from);
@@ -1107,54 +1141,32 @@
                 return t.row === targetRank;
             }
             
-            isKingInCheck(color) {
-                for (let r = 0; r < 8; r++) {
-                    for (let c = 0; c < 8; c++) {
-                        const piece = this.board[r][c];
-                        if (piece && PIECE_MAP[piece].type === 'King' && PIECE_MAP[piece].color === color) {
-                            return this.isSquareAttacked(r, c, color === 'w' ? 'b' : 'w');
-                        }
-                    }
+            // Re-written to use Stockfish to find all legal moves AND check state.
+            async getLegalMoves(pos = null) {
+                if (!sfReady) return { moves: [], inCheck: false };
+
+                const movePromise = new Promise((resolve) => {
+                    // This flag resolves the promise in handleStockfishMessage
+                    pendingLegalMovesRequest = { resolve: resolve, checkStatusLine: null };
+                });
+
+                const currentFEN = this.getFEN(this.board, this.turn, this.castling, this.enPassant);
+                stockfish.postMessage("stop"); 
+                stockfish.postMessage(`position fen ${currentFEN}`);
+                stockfish.postMessage("d"); // 'd' command returns FEN, check status, and legal moves
+
+                const { moves, inCheck } = await movePromise;
+
+                if (!pos) {
+                    // Requesting ALL legal moves (used for Checkmate/Stalemate check)
+                    return { moves, inCheck };
+                } else {
+                    // Requesting legal moves for a specific piece (used for highlighting)
+                    return { moves: moves.filter(move => move.startsWith(pos)), inCheck };
                 }
-                return false;
-            }
-            
-            isSquareAttacked(r, c, attackerColor) {
-                // Simple implementation: checks all squares for an attacker that could move to (r, c)
-                // Full implementation is complex; Stockfish handles true legality.
-                return false; 
-            }
-            
-            testMoveForCheck(f, t) {
-                // The crucial check to ensure moves don't leave the king in check.
-                // Simplified here, but in a real engine, this involves temporarily executing the move
-                // and calling isKingInCheck().
-                return false; 
-            }
-            
-            getLegalMoves(pos) {
-                // Fetches moves from Stockfish or uses a simple local generator
-                // Since Stockfish is used for analysis, we use the engine for moves
-                // (In a real deployment, a simplified local generator is used to minimize requests)
-                
-                // Placeholder - returns dummy moves for selection display
-                if (pos) {
-                    const f = toCoords(pos);
-                    const moves = [];
-                    for(let r=0; r<8; r++) {
-                        for(let c=0; c<8; c++) {
-                             if (Math.abs(f.row - r) <= 1 && Math.abs(f.col - c) <= 1) {
-                                 moves.push(toNotation(r, c));
-                             }
-                        }
-                    }
-                    return moves.filter(m => m !== pos);
-                }
-                return []; 
             }
             
             showPromo() {
-                // Renders promotion dialog for the human player
                 const color = this.turn;
                 promoChoices.innerHTML = '';
                 const pieces = ['Q', 'R', 'B', 'N'];
@@ -1173,7 +1185,6 @@
             }
 
             updateOpeningDisplay() {
-                // Check if the current FEN (before the move clock and counters) matches any opening
                 const currentFENPrefix = this.fenHistory[this.fenHistory.length - 1].split(' ').slice(0, 4).join(' ');
                 let openingName = "Game in Progress";
                 
