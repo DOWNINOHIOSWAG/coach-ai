@@ -21,7 +21,7 @@
 
         /* --- CONTROL PANEL --- */
         #control-panel {
-            width: 800px; 
+            width: 800px; /* Kept wide for centered look */
             margin-bottom: 20px;
             padding: 15px;
             background-color: #fff;
@@ -54,18 +54,29 @@
             font-weight: bold;
         }
 
-        /* --- MAIN GAME CONTAINER: DEFINITIVE FIX APPLIED HERE --- */
+        /* --- MAIN GAME CONTAINER: CSS GRID DEFINITIVE FIX --- */
         #game-container {
-            /* Calculated width: Board (480) + Border (10) + Bar (30) + Sidebar (260) + Gap (20) + Gap (20) = ~820px. Adjusting for padding/margins */
-            width: 840px; 
-            display: flex; /* Ensures children flow horizontally */
-            gap: 20px; /* Space between board/bar and sidebar */
-            align-items: flex-start; /* Aligns board, bar, and sidebar at the top */
+            /* Now using CSS Grid to enforce 3 columns */
+            display: grid; 
+            /* Columns: Board, Gap, Eval Bar, Gap, Sidebar */
+            grid-template-columns: 480px 20px 30px 20px 260px;
+            grid-template-rows: auto;
+            align-items: start; 
             padding: 20px;
             background-color: #fff;
             border-radius: 8px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            width: auto; /* Let grid columns define total width */
         }
+        
+        /* Apply Grid Column positioning explicitly in the HTML structure: 
+           Board is 1st column, Bar is 3rd, Sidebar is 5th.
+           Gaps are columns 2 and 4.
+        */
+        #chessboard { grid-column: 1; }
+        #evaluation-bar-container { grid-column: 3; }
+        #sidebar { grid-column: 5; }
+
 
         /* --- CHESS BOARD (Resized) --- */
         .square-size {
@@ -152,7 +163,7 @@
         
         /* --- SIDEBAR AND HISTORY --- */
         #sidebar {
-            width: 260px; /* Fixed width for the sidebar to ensure non-overlap */
+            width: 260px; 
             display: flex;
             flex-direction: column;
             gap: 15px;
@@ -206,13 +217,41 @@
         /* --- PIECE IMAGES AND HIGHLIGHTS (rest of your CSS remains the same) --- */
         .wk { background-image: url('images/wk.png'); }
         .wq { background-image: url('images/wq.png'); }
-        /* ... (all other piece images omitted for brevity but remain in your full file) ... */
+        .wr { background-image: url('images/wr.png'); }
+        .wb { background-image: url('images/wb.png'); }
+        .wn { background-image: url('images/wn.png'); }
+        .wp { background-image: url('images/wp.png'); }
+        .bk { background-image: url('images/bk.png'); }
+        .bq { background-image: url('images/bq.png'); }
+        .br { background-image: url('images/br.png'); }
+        .bb { background-image: url('images/bb.png'); }
+        .bn { background-image: url('images/bn.png'); }
+        .bp { background-image: url('images/bp.png'); }
 
+        .promo-Q { background-image: url('images/wq.png'); }
+        .promo-R { background-image: url('images/wr.png'); }
+        .promo-B { background-image: url('images/wb.png'); }
+        .promo-N { background-image: url('images/wn.png'); }
+        
         .selected { background-color: rgba(255, 255, 0, 0.5) !important; }
         .in-check { background-color: rgba(255, 0, 0, 0.6) !important; }
-        /* ... (rest of your existing board styles) ... */
 
-        /* --- DIALOGS --- */
+        .move-target::after {
+            content: '';
+            display: block;
+            width: 18px; 
+            height: 18px; 
+            background-color: rgba(0, 0, 0, 0.2);
+            border-radius: 50%;
+        }
+
+        .square.move-target:not(:empty)::after { display: none; }
+        .square.move-target .piece {
+             box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.2); 
+             border-radius: 50%;
+        }
+
+        /* --- DIALOGS (Z-index ensures these are always on top) --- */
         .piece-choice {
             width: 45px;
             height: 45px;
