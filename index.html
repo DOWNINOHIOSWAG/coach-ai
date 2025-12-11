@@ -21,7 +21,7 @@
 
         /* --- CONTROL PANEL --- */
         #control-panel {
-            width: 800px; /* Kept wide for centered look */
+            width: 800px; 
             margin-bottom: 20px;
             padding: 15px;
             background-color: #fff;
@@ -54,11 +54,11 @@
             font-weight: bold;
         }
 
-        /* --- MAIN GAME CONTAINER: CSS GRID DEFINITIVE FIX --- */
+        /* --- MAIN GAME CONTAINER: EXTREME CSS GRID FIX --- */
+        /* Total Width: 480 (Board) + 20 (Gap) + 30 (Bar) + 20 (Gap) + 260 (Sidebar) + 40 (Padding) = 850px */
         #game-container {
-            /* Now using CSS Grid to enforce 3 columns */
             display: grid; 
-            /* Columns: Board, Gap, Eval Bar, Gap, Sidebar */
+            /* Define 5 explicit columns for Board, Gap, Bar, Gap, Sidebar */
             grid-template-columns: 480px 20px 30px 20px 260px;
             grid-template-rows: auto;
             align-items: start; 
@@ -66,13 +66,11 @@
             background-color: #fff;
             border-radius: 8px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-            width: auto; /* Let grid columns define total width */
+            width: 850px; /* Explicit total width including padding, though grid should handle it */
+            box-sizing: border-box; /* Crucial: padding/border stays inside the 850px width */
         }
         
-        /* Apply Grid Column positioning explicitly in the HTML structure: 
-           Board is 1st column, Bar is 3rd, Sidebar is 5th.
-           Gaps are columns 2 and 4.
-        */
+        /* Place elements in their respective columns */
         #chessboard { grid-column: 1; }
         #evaluation-bar-container { grid-column: 3; }
         #sidebar { grid-column: 5; }
@@ -93,8 +91,9 @@
             border: 5px solid #333;
             box-shadow: 0 6px 15px rgba(0,0,0,0.2);
             background-color: #333;
-            position: relative; 
+            position: relative; /* Needs relative for absolute pieces to work */
         }
+        /* Z-index for the board is NOT set, allowing siblings to lay correctly */
 
         .square {
             box-sizing: border-box; 
@@ -114,13 +113,13 @@
             background-repeat: no-repeat;
             background-position: center;
             cursor: pointer;
-            z-index: 2;
+            z-index: 2; /* Ensures pieces are above squares */
         }
         
         /* Piece moving animation style */
         .moving-piece {
             transition: transform 0.3s ease-out;
-            z-index: 1000;
+            z-index: 1000; /* Ensures moving piece is above everything */
         }
         
         .dragging {
@@ -133,10 +132,10 @@
         #evaluation-bar-container {
             width: 30px; 
             height: 480px; /* Matches board height (8 * 60px) */
-            background-color: #000; /* Black's color */
+            background-color: #000; 
             border-radius: 5px;
             overflow: hidden;
-            position: relative;
+            position: relative; 
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
         }
         
@@ -144,7 +143,7 @@
             position: absolute;
             bottom: 0; 
             width: 100%;
-            background-color: #fff; /* White's color */
+            background-color: #fff; 
             transition: height 0.3s ease-out;
         }
         
@@ -156,14 +155,14 @@
             white-space: nowrap;
             font-weight: bold;
             font-size: 1.1em;
-            color: #fff; /* Score text color */
+            color: #fff; 
             z-index: 5;
             transition: transform 0.3s ease-out;
         }
         
         /* --- SIDEBAR AND HISTORY --- */
         #sidebar {
-            width: 260px; 
+            width: 260px; /* Explicit width */
             display: flex;
             flex-direction: column;
             gap: 15px;
@@ -214,7 +213,7 @@
             margin-right: 5px;
         }
         
-        /* --- PIECE IMAGES AND HIGHLIGHTS (rest of your CSS remains the same) --- */
+        /* --- PIECE IMAGES AND HIGHLIGHTS --- */
         .wk { background-image: url('images/wk.png'); }
         .wq { background-image: url('images/wq.png'); }
         .wr { background-image: url('images/wr.png'); }
