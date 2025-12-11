@@ -425,13 +425,14 @@
 
         function initStockfish() {
             try {
-                // Ensure stockfish.js is in the same directory as index.html
+                // IMPORTANT: This line requires stockfish.js in the same directory.
                 stockfish = new Worker("stockfish.js"); 
                 
                 stockfish.onmessage = handleStockfishMessage;
                 stockfish.onerror = (e) => {
                     console.error("Stockfish worker error:", e);
-                    alert("Stockfish AI failed to load. Ensure 'stockfish.js' is accessible via your web server.");
+                    // Use a visual alert for the user if the worker fails to load.
+                    alert("Stockfish AI failed to load. Ensure 'stockfish.js' is accessible via your web server (or in the same directory).");
                 };
 
                 stockfish.postMessage("uci");
@@ -463,7 +464,6 @@
             
             // --- Legal Move List Response ---
             if (pendingLegalMovesRequest && line.startsWith("Legal moves:")) {
-                // Stockfish "d" command output often includes "Legal moves: ..."
                 const moves = line.substring(13).trim().split(/\s+/).filter(m => m.length > 0);
                 const resolve = pendingLegalMovesRequest.resolve;
                 const checkStatusLine = pendingLegalMovesRequest.checkStatusLine;
@@ -564,7 +564,9 @@
                 
                 this.setDifficulty(eloSelector.value);
                 this.setPlayerColor(colorSelector.value); 
-                this.initBoard();
+                
+                // Initialize Stockfish immediately
+                initStockfish();
             }
             
             setDifficulty(elo) {
@@ -667,7 +669,6 @@
                     else { this.board[r][c] = char; c++; }
                 }
                 this.turn = parts[1];
-                // In a proper engine, we would check for check here. For now, rely on `checkGameOver`
             }
 
             // --- History and Analysis Updates ---
@@ -834,11 +835,11 @@
             
             async updateHighlights() {
                 document.querySelectorAll('.move-target').forEach(el => el.classList.remove('move-target'));
+                if (!sfReady) return;
 
                 if (this.selected) {
                     const { moves } = await this.getLegalMoves(this.selected);
                     moves.forEach(m => {
-                        // Move is in UCI format (e.g., e2e4, a7a8q)
                         document.getElementById(m.substring(2, 4))?.classList.add('move-target');
                     });
                 }
@@ -969,7 +970,7 @@
             }
 
             async tryMove(from, to, isAiMove = false, uciMoveOverride = null) {
-                if (this.isGameOver || this.isAnimating) return false;
+                if (this.isGameOver || this.isAnimating || !sfReady) return false;
                 
                 let uciMove = uciMoveOverride || (from + to); 
                 
@@ -1079,9 +1080,11 @@
             }
             
             async checkGameOver() {
+                if (!sfReady) return; // Cannot check game over state without Stockfish
+
                 const { moves, inCheck } = await this.getLegalMoves(null);
                 
-                this.inCheck = inCheck; // Update check state based on engine's report
+                this.inCheck = inCheck; 
                 
                 if (moves.length === 0) {
                     this.isGameOver = true;
@@ -1098,7 +1101,7 @@
 
             // --- Move Input Handling ---
             async onMouseDown(e, notation) { 
-                if (this.isAnimating || this.isGameOver || this.turn === AI_PLAYER) return;
+                if (this.isAnimating || this.isGameOver || this.turn === AI_PLAYER || !sfReady) return;
                 
                 const { row, col } = toCoords(notation);
                 const piece = this.board[row][col];
@@ -1111,7 +1114,6 @@
                     if (moveSucceeded) return; 
                 }
                 
-                // If the move didn't succeed, or if no piece was selected before:
                 if (piece && pieceColor === this.turn) {
                     this.selected = notation;
                 } else {
@@ -1141,27 +1143,23 @@
                 return t.row === targetRank;
             }
             
-            // Re-written to use Stockfish to find all legal moves AND check state.
             async getLegalMoves(pos = null) {
                 if (!sfReady) return { moves: [], inCheck: false };
 
                 const movePromise = new Promise((resolve) => {
-                    // This flag resolves the promise in handleStockfishMessage
                     pendingLegalMovesRequest = { resolve: resolve, checkStatusLine: null };
                 });
 
                 const currentFEN = this.getFEN(this.board, this.turn, this.castling, this.enPassant);
                 stockfish.postMessage("stop"); 
                 stockfish.postMessage(`position fen ${currentFEN}`);
-                stockfish.postMessage("d"); // 'd' command returns FEN, check status, and legal moves
+                stockfish.postMessage("d"); 
 
                 const { moves, inCheck } = await movePromise;
 
                 if (!pos) {
-                    // Requesting ALL legal moves (used for Checkmate/Stalemate check)
                     return { moves, inCheck };
                 } else {
-                    // Requesting legal moves for a specific piece (used for highlighting)
                     return { moves: moves.filter(move => move.startsWith(pos)), inCheck };
                 }
             }
@@ -1203,7 +1201,7 @@
         }
 
         const game = new ChessGame();
-        initStockfish();
+        
     </script>
 </body>
 </html>
